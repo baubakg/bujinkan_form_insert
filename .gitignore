@@ -1,0 +1,25 @@
+# Ignore JSON data files that may contain PII
+wp_frmt_form_entry_meta.json
+wp_frmt_form_entry_meta_clean.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
