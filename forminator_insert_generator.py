@@ -81,13 +81,12 @@ class ForminatorInsertGenerator:
         # Escape single quotes and backslashes
         return value.replace('\\', '\\\\').replace("'", "\\'")
     
-    def generate_insert_query(self, meta_id: int, entry_id: int, meta_key: str, 
+    def generate_insert_query(self, entry_id: int, meta_key: str, 
                              meta_value: str, date_created: Optional[str] = None) -> str:
         """
         Generate a single INSERT query for a form entry meta field.
         
         Args:
-            meta_id: Unique meta ID
             entry_id: Form entry ID
             meta_key: Field key (e.g., 'name-1', 'email-1')
             meta_value: Field value (can be serialized PHP array)
@@ -104,9 +103,9 @@ class ForminatorInsertGenerator:
         
         query = (
             f"INSERT INTO `{self.TABLE_NAME}` "
-            f"(`meta_id`, `entry_id`, `meta_key`, `meta_value`, `date_created`, `date_updated`) "
+            f"(`entry_id`, `meta_key`, `meta_value`, `date_created`, `date_updated`) "
             f"VALUES "
-            f"({meta_id}, {entry_id}, '{meta_key}', '{escaped_value}', '{date_created}', '0000-00-00 00:00:00');"
+            f"({entry_id}, '{meta_key}', '{escaped_value}', '{date_created}', '0000-00-00 00:00:00');"
         )
         
         return query
@@ -114,7 +113,6 @@ class ForminatorInsertGenerator:
     def generate_entry_inserts(
         self,
         entry_id: int,
-        meta_id_start: int,
         first_name: str,
         last_name: str,
         email: str,
@@ -128,6 +126,8 @@ class ForminatorInsertGenerator:
         party: bool = False,
         t_shirt: bool = False,
         t_shirt_size: Optional[str] = None,
+        ffst_id: Optional[str] = None,
+        party_participants: str = "1",
         date_created: Optional[str] = None,
         currency: str = "EUR"
     ) -> List[str]:
@@ -136,7 +136,6 @@ class ForminatorInsertGenerator:
         
         Args:
             entry_id: Form entry ID
-            meta_id_start: Starting meta ID (will be incremented for each field)
             first_name: First name of the person
             last_name: Last name of the person
             email: Email address
@@ -150,6 +149,8 @@ class ForminatorInsertGenerator:
             party: Include "Fête Finale / Final Party" in checkbox-2 (default: False)
             t_shirt: Include "T-Shirt" in checkbox-2 and related fields (default: False)
             t_shirt_size: T-shirt size (e.g., "M", "L", "XL") - only used when t_shirt=True
+            ffst_id: FFST ID - when set, adds text-1 field (default: None)
+            party_participants: Number of party participants for select-5 field (default: "1")
             date_created: Creation timestamp (defaults to current datetime)
             currency: Currency code (default: "EUR")
         
@@ -167,7 +168,6 @@ class ForminatorInsertGenerator:
         gender_value = gender_map.get(gender, gender)  # Use mapped value or original if not M/F
         
         queries = []
-        current_meta_id = meta_id_start
         
         # Generate the submission date in DD/MM/YYYY format for hidden-2
         if date_created:
@@ -180,96 +180,89 @@ class ForminatorInsertGenerator:
         
         # 1. Hidden field (hidden-1) - Entry ID
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'hidden-1', str(entry_id), date_created
+            entry_id, 'hidden-1', str(entry_id), date_created
         ))
-        current_meta_id += 1
         
         # 2. Hidden field (hidden-2) - Submission Date (DD/MM/YYYY)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'hidden-2', submission_date, date_created
+            entry_id, 'hidden-2', submission_date, date_created
         ))
-        current_meta_id += 1
         
-        # 3. Calculation-1 field (always present - 20 if t_shirt, 0 otherwise)
+        # 3. Text field (text-1) - FFST ID (optional)
+        if ffst_id:
+            queries.append(self.generate_insert_query(
+                entry_id, 'text-1', ffst_id, date_created
+            ))
+        
+        # 4. Calculation-1 field (always present - 20 if t_shirt, 0 otherwise)
         calculation_amount = 20 if t_shirt else 0
         calculation_value = self.php_serialize_calculation(calculation_amount)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'calculation-1', calculation_value, date_created
+            entry_id, 'calculation-1', calculation_value, date_created
         ))
-        current_meta_id += 1
         
-        # 4. Calculation-2 field (always present - stripe amount)
+        # 5. Calculation-2 field (always present - stripe amount)
         calculation2_value = self.php_serialize_calculation(float(stripe_amount))
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'calculation-2', calculation2_value, date_created
+            entry_id, 'calculation-2', calculation2_value, date_created
         ))
-        current_meta_id += 1
         
-        # 5. Name field (name-1) - PHP serialized array
+        # 6. Name field (name-1) - PHP serialized array
         name_value = self.php_serialize_name(first_name, last_name)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'name-1', name_value, date_created
+            entry_id, 'name-1', name_value, date_created
         ))
-        current_meta_id += 1
         
-        # 6. Email field (email-1)
+        # 7. Email field (email-1)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'email-1', email, date_created
+            entry_id, 'email-1', email, date_created
         ))
-        current_meta_id += 1
         
-        # 7. Phone field (phone-1)
+        # 8. Phone field (phone-1)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'phone-1', phone, date_created
+            entry_id, 'phone-1', phone, date_created
         ))
-        current_meta_id += 1
         
-        # 8. Grade field (select-1)
+        # 9. Grade field (select-1)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'select-1', grade, date_created
+            entry_id, 'select-1', grade, date_created
         ))
-        current_meta_id += 1
         
-        # 9. Dojo Name field (text-3)
+        # 10. Dojo Name field (text-3)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'text-3', dojo_name, date_created
+            entry_id, 'text-3', dojo_name, date_created
         ))
-        current_meta_id += 1
         
-        # 10. Birth Date field (date-1)
+        # 11. Birth Date field (date-1)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'date-1', birth_date, date_created
+            entry_id, 'date-1', birth_date, date_created
         ))
-        current_meta_id += 1
         
-        # 11. Gender field (select-2) - only when t_shirt is True
+        # 12. Gender field (select-2) - only when t_shirt is True
         if t_shirt:
             queries.append(self.generate_insert_query(
-                current_meta_id, entry_id, 'select-2', gender_value, date_created
+                entry_id, 'select-2', gender_value, date_created
             ))
-            current_meta_id += 1
         
-        # 12. T-Shirt Size field (select-3) - only when t_shirt is True and t_shirt_size is provided
+        # 13. T-Shirt Size field (select-3) - only when t_shirt is True and t_shirt_size is provided
         if t_shirt and t_shirt_size:
             queries.append(self.generate_insert_query(
-                current_meta_id, entry_id, 'select-3', t_shirt_size, date_created
+                entry_id, 'select-3', t_shirt_size, date_created
             ))
-            current_meta_id += 1
         
-        # 13. Select-4 field (conditional - only when t_shirt is True)
+        # 14. Select-4 field (conditional - only when t_shirt is True)
         if t_shirt:
             queries.append(self.generate_insert_query(
-                current_meta_id, entry_id, 'select-4', '1', date_created
+                entry_id, 'select-4', '1', date_created
             ))
-            current_meta_id += 1
         
-        # 14. Select-5 field (always "1")
-        queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'select-5', '1', date_created
-        ))
-        current_meta_id += 1
+        # 15. Select-5 field
+        if party:
+            queries.append(self.generate_insert_query(
+                entry_id, 'select-5', party_participants, date_created
+            ))
         
-        # 15. Checkbox-2 field (optional - party and/or t-shirt)
+        # 16. Checkbox-2 field (optional - party and/or t-shirt)
         if party or t_shirt:
             checkbox_values = []
             if party:
@@ -278,16 +271,14 @@ class ForminatorInsertGenerator:
                 checkbox_values.append('T-Shirt')
             checkbox_value = ', '.join(checkbox_values)
             queries.append(self.generate_insert_query(
-                current_meta_id, entry_id, 'checkbox-2', checkbox_value, date_created
+                entry_id, 'checkbox-2', checkbox_value, date_created
             ))
-            current_meta_id += 1
         
-        # 16. Stripe payment field (stripe-ocs-1) - PHP serialized array
+        # 17. Stripe payment field (stripe-ocs-1) - PHP serialized array
         stripe_value = self.php_serialize_stripe(stripe_transaction_id, stripe_amount, currency)
         queries.append(self.generate_insert_query(
-            current_meta_id, entry_id, 'stripe-ocs-1', stripe_value, date_created
+            entry_id, 'stripe-ocs-1', stripe_value, date_created
         ))
-        current_meta_id += 1
         
         return queries
     
@@ -297,7 +288,7 @@ class ForminatorInsertGenerator:
         
         Args:
             entries: List of dictionaries containing entry data.
-                    Each dict should have keys: entry_id, meta_id_start, first_name,
+                    Each dict should have keys: entry_id, first_name,
                     last_name, email, phone, grade, dojo_name, birth_date, gender,
                     stripe_transaction_id, stripe_amount, and optionally date_created, currency
         
@@ -309,7 +300,6 @@ class ForminatorInsertGenerator:
         for entry in entries:
             queries = self.generate_entry_inserts(
                 entry_id=entry['entry_id'],
-                meta_id_start=entry['meta_id_start'],
                 first_name=entry['first_name'],
                 last_name=entry['last_name'],
                 email=entry['email'],
@@ -335,21 +325,22 @@ def main():
     
     # Example entry data
     example_entry = {
-        'entry_id': 668,
-        'meta_id_start': 6031,
-        'first_name': 'Xander',
-        'last_name': 'Beemer',
-        'email': 'xjbeemer@hotmail.com',
-        'phone': '+31 613865831',
-        'grade': '6 Dan',
-        'dojo_name': 'Miko Dojo',
-        'birth_date': '02/03/1973',
+        'entry_id': 338,
+        'first_name': 'John',
+        'last_name': 'Doe',
+        'email': 'john.doe@example.com',
+        'phone': '+33 6 12 34 56 78',
+        'grade': 'Daishihan',
+        'dojo_name': 'Example Dojo',
+        'birth_date': '15/06/1980',
         'gender': 'M',  # "M" for Male, "F" for Female
-        'stripe_transaction_id': 'pi_3RnbxeBvS0tjVNMi1g2TFBHk',
-        'stripe_amount': '350.00',
+        'stripe_transaction_id': 'Transaction_ID_1234567890',
+        'stripe_amount': '123',
         'party': True,  # Include "Fête Finale / Final Party" in checkbox-2
-        't_shirt': True,  # Include "T-Shirt" in checkbox-2 and related fields
-        't_shirt_size': 'L',  # T-shirt size (only used when t_shirt=True)
+        't_shirt': False,  # Include "T-Shirt" in checkbox-2 and related fields
+        't_shirt_size': 'S',  # T-shirt size (only used when t_shirt=True)
+        'party_participants': '1',  # Number of party participants (only used when party=True)
+        #'ffst_id': 'M135015',  # Optional - adds text-1 field when set
         # currency defaults to 'EUR' - no need to specify
     }
     
